@@ -2,12 +2,14 @@
 
 #include "Common/Win32Util.h"
 #include "Dll/Player.h"
+#include "Dll/ScriptTrace.h"
 
 namespace ge {
 
 namespace {
 
 HHOOK g_hook = nullptr;
+HHOOK g_mouseHook = nullptr;
 HANDLE g_hookThread = nullptr;
 DWORD g_hookThreadId = 0;
 HMODULE g_hookModule = nullptr;
@@ -27,20 +29,40 @@ bool IsGameForeground() {
 LRESULT CALLBACK KeyboardProc(int code, WPARAM wParam, LPARAM lParam) {
     if (code == HC_ACTION && lParam != 0) {
         const auto* info = reinterpret_cast<const KBDLLHOOKSTRUCT*>(lParam);
-        if (info->vkCode == g_hotkey) {
-            const bool isDown = (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN);
-            const bool isUp = (wParam == WM_KEYUP || wParam == WM_SYSKEYUP);
-
-            if (isDown) {
-                // 注入的按键（远程注入器、宏）不算，避免被别的工具误触发。
-                if ((info->flags & LLKHF_INJECTED) == 0 && IsGameForeground()) {
-                    RequestJump();
+        const bool isDown = (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN);
+        // 注入的按键（远程注入器、宏）不算，避免被别的工具误触发。
+        if (isDown && (info->flags & LLKHF_INJECTED) == 0 && IsGameForeground()) {
+            if (info->vkCode == g_hotkey) {
+                RequestJump();
+            } else if (info->vkCode == VK_SPACE) {
+                // 角色模式下 H 的输入被停用，空格没人处理，这里转发给房间管理器的切镜头事件。
+                if (ScriptTraceInPlayerMode()) {
+                    ScriptTraceRequestCameraSwitch();
                 }
+            } else if (info->vkCode == 'P') {
+                // 角色模式：角色可见可控 + 镜头跟随 + 动作继续；再按一次回 H 模式。
+                ScriptTraceRequestRestore();
             }
         }
     }
 
-    // 永远放行：游戏自己的 Q 输入必须照常收到。
+    // 永远放行：游戏自己的按键必须照常收到。
+    return ::CallNextHookEx(nullptr, code, wParam, lParam);
+}
+
+// 角色模式下由我们自己接管鼠标视角：H 期间鼠标事件被 A_FreeCameraPawn 独占，
+// 把它停掉后就没有任何一方处理鼠标了，所以这里把位移转给 ScriptTrace 去驱动控制器。
+LRESULT CALLBACK MouseProc(int code, WPARAM wParam, LPARAM lParam) {
+    if (code == HC_ACTION && lParam != 0 && wParam == WM_MOUSEMOVE && IsGameForeground()) {
+        static POINT last = {};
+        static bool hasLast = false;
+        const auto* info = reinterpret_cast<const MSLLHOOKSTRUCT*>(lParam);
+        if (hasLast) {
+            ScriptTraceAddLook(info->pt.x - last.x, info->pt.y - last.y);
+        }
+        last = info->pt;
+        hasLast = true;
+    }
     return ::CallNextHookEx(nullptr, code, wParam, lParam);
 }
 
@@ -56,7 +78,9 @@ DWORD WINAPI HookThreadProc(LPVOID) {
         LogLine("键盘钩子：SetWindowsHookEx 失败 (%lu)", ::GetLastError());
         return 0;
     }
-    LogLine("键盘钩子：已安装，触发键 vk=0x%02X", g_hotkey);
+    g_mouseHook = ::SetWindowsHookExW(WH_MOUSE_LL, MouseProc, g_hookModule, 0);
+    LogLine("键盘钩子：已安装，触发键 vk=0x%02X；鼠标钩子=%s", g_hotkey,
+            g_mouseHook != nullptr ? "已装" : "失败");
 
     while (InterlockedCompareExchange(&g_stop, 0, 0) == 0) {
         const BOOL got = ::GetMessageW(&msg, nullptr, 0, 0);
@@ -67,6 +91,10 @@ DWORD WINAPI HookThreadProc(LPVOID) {
         ::DispatchMessageW(&msg);
     }
 
+    if (g_mouseHook != nullptr) {
+        ::UnhookWindowsHookEx(g_mouseHook);
+        g_mouseHook = nullptr;
+    }
     if (g_hook != nullptr) {
         ::UnhookWindowsHookEx(g_hook);
         g_hook = nullptr;

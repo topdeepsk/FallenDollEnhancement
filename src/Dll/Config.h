@@ -34,6 +34,11 @@ struct Config {
     bool     traceDryRun      = false;  // 只定位槽位并写日志，不改 vtable（首次验证用）
     uint32_t processEventSlot = 0x260;  // UE5.7 的 ProcessEvent 槽位；0 = 只用特征扫描
     bool     previewAutoCommit = true;  // 左键判定未通过时，自动补调提交函数
+
+    // --- 角色模式下的鼠标视角 ---
+    double   lookSensitivity = 0.15;    // 每像素对应的角度系数
+    bool     lookInvertY     = true;    // 上下反向修正（实测原方向是反的）
+    bool     probeInput      = false;   // 普通模式下也记录输入函数（定位按键绑定用）
 };
 
 Config& Cfg();

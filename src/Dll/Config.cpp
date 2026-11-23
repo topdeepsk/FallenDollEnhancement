@@ -177,6 +177,15 @@ void ApplyLine(const std::wstring& rawLine, Config& config) {
         ParseBoolValue(value, config.traceScript);
     } else if (key == L"tracedryrun") {
         ParseBoolValue(value, config.traceDryRun);
+    } else if (key == L"looksensitivity") {
+        const double parsed = std::wcstod(value.c_str(), &end);
+        if (end != value.c_str() && parsed > 0.0 && parsed <= 5.0) {
+            config.lookSensitivity = parsed;
+        }
+    } else if (key == L"lookinverty") {
+        ParseBoolValue(value, config.lookInvertY);
+    } else if (key == L"probeinput") {
+        ParseBoolValue(value, config.probeInput);
     } else if (key == L"previewautocommit") {
         ParseBoolValue(value, config.previewAutoCommit);
     } else if (key == L"processeventslot") {

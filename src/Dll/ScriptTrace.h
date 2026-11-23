@@ -25,4 +25,24 @@ void ScriptTraceDumpCaptures();
 // 0 = 已调用；负数 = 解析失败或未接管。
 int ScriptTraceForceCommit();
 
+// 从 DLL 同目录的 call.txt 读"类名/函数名"，让游戏线程调一次（实验用）。
+int ScriptTraceCallFromFile();
+
+// P 键：恢复玩家角色的显示与控制，动作继续播放。
+// 可从任意线程调用；实际调用发生在游戏线程的 ProcessEvent thunk 里。
+void ScriptTraceRequestRestore();
+
+// O 键（实验）：走游戏退出流程，同时拦下"停止播放/销毁"的反射调用。
+// 用来验证销毁是否走反射——若走，就能同时拿到原生镜头/UI 和持续播放。
+void ScriptTraceRequestQuitExperiment();
+
+// 鼠标位移（由 WH_MOUSE_LL 钩子调用）。只在"玩家角色模式"下生效。
+void ScriptTraceAddLook(long dx, long dy);
+
+// 是否处于"玩家角色模式"（P 键切换后的状态）。
+bool ScriptTraceInPlayerMode();
+
+// 把空格转发给普通模式下的切镜头处理函数。
+void ScriptTraceRequestCameraSwitch();
+
 }  // namespace ge

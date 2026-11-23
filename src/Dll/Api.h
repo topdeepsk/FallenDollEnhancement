@@ -39,3 +39,6 @@ GE_API int GE_TraceDump();
 
 // 直接调用提交函数（不经过左键判定）。
 GE_API int GE_ForceCommit();
+
+// 实验：按 call.txt 里的“类名/函数名”在游戏线程调一次。
+GE_API int GE_CallFromFile();

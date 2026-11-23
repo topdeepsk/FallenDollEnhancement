@@ -91,6 +91,14 @@ GE_API int GE_ForceCommit() {
     return ScriptTraceForceCommit();
 }
 
+// 实验：读 DLL 同目录的 call.txt（类名/函数名），让游戏线程调一次。
+GE_API int GE_CallFromFile() {
+    if (g_installed == 0) {
+        return -1;
+    }
+    return ScriptTraceCallFromFile();
+}
+
 GE_API int GE_Install() {
     if (!g_lockReady) {
         return kGeErrJumpWorker;

@@ -76,6 +76,7 @@ struct Options {
     bool scriptState = false;
     bool dumpTrace = false;
     bool commitNow = false;
+    bool callNow = false;
     bool skipUnload = false;
     bool skipUninstallCall = false;
     int waitSeconds = 0;
@@ -109,6 +110,9 @@ bool ParseArgs(int argc, char** argv, Options& options) {
             options.skipUnload = true;
         } else if (std::strcmp(arg, "--commit") == 0) {
             options.commitNow = true;
+            options.skipUnload = true;
+        } else if (std::strcmp(arg, "--call") == 0) {
+            options.callNow = true;
             options.skipUnload = true;
         } else if (std::strcmp(arg, "--no-unload") == 0) {
             options.skipUnload = true;
@@ -230,7 +234,7 @@ int main(int argc, char** argv) {
 
     // --- 可选：直接调一个导出做验证（跳跃 / 放置状态 / 强制落位），不必切回游戏操作 ---
     if (options.jumpOnly || options.previewOnly || options.placeOnly || options.scriptState ||
-        options.dumpTrace || options.commitNow) {
+        options.dumpTrace || options.commitNow || options.callNow) {
         uintptr_t base = existing;
         if (base == 0) {
             if (!ge::InjectDll(info.pid, process, options.dllPath, error)) {
@@ -249,6 +253,7 @@ int main(int argc, char** argv) {
                                  : options.scriptState ? "GE_ScriptTraceState"
                                  : options.dumpTrace ? "GE_TraceDump"
                                  : options.commitNow ? "GE_ForceCommit"
+                                 : options.callNow ? "GE_CallFromFile"
                                                      : "GE_PreviewState";
         DWORD code = 0;
         if (!ge::CallExport(process, base, options.dllPath, exportName, code, error)) {

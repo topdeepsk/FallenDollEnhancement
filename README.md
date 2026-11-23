@@ -14,7 +14,7 @@
 | 产物 | 说明 |
 |---|---|
 | `build/bin/ge_inject.exe` | 注入器（x64 控制台程序），`CreateRemoteThread` + `LoadLibraryW` |
-| `build/bin/GameEnhancement.dll` | 被注入的模块，导出 `GE_Install` / `GE_Uninstall` / `GE_QueryState` / `GE_JumpNow` / `GE_AbiVersion` |
+| `build/bin/GameEnhancement.dll` | 被注入的模块，导出 `GE_Install` / `GE_Uninstall` / `GE_QueryState` / `GE_JumpNow` / `GE_PreviewState` / `GE_ForcePlaceNow` / `GE_AbiVersion` |
 | `build/bin/GameEnhancement.ini` | 首次注入时自动生成的可调参数文件 |
 | `build/bin/GameEnhancement.log` | 运行日志，与 ini 同目录 |
 
@@ -61,6 +61,12 @@ ge_inject.exe Paralogue-Win64-Shipping.exe --eject
 
 :: 不按 Q，直接触发一次跳跃（验证链路）
 ge_inject.exe Paralogue-Win64-Shipping.exe --jump
+
+:: 打印动作放置的预览状态（管理器地址 / 三个判定标志 / 幽灵坐标）
+ge_inject.exe Paralogue-Win64-Shipping.exe --preview
+
+:: 按当前幽灵位置强制改写一次放置判定（不点鼠标，排错用）
+ge_inject.exe Paralogue-Win64-Shipping.exe --place
 ```
 
 **重复注入**：直接再跑一次同样的命令即可。注入器会先远程调用
@@ -72,6 +78,8 @@ ge_inject.exe Paralogue-Win64-Shipping.exe --jump
 | `--dll <路径>` | 指定 DLL |
 | `--eject` | 只卸载 |
 | `--jump` | 让已注入的实例立刻跳一次，不必按 Q（排错用） |
+| `--preview` | 打印动作放置的预览状态，只读 |
+| `--place` | 按当前幽灵位置强制改写一次放置判定 |
 | `--no-unload` | 跳过卸载直接注入（调试用，会留下旧实例的钩子） |
 | `--skip-uninstall` | 卸载时跳过 `GE_Uninstall`，只 `FreeLibrary`（靠 DllMain 兜底） |
 | `--wait <秒>` | 等待进程出现 |
@@ -94,6 +102,19 @@ HoldMs=300             ; 抬升后保持多久，0 = 只写一帧
 TickMs=8               ; 保持期间的重写间隔
 HotkeyVK=0x51          ; 触发键虚拟键码，0x51 = Q
 ZeroVelocity=1         ; 保持期间把竖直速度清零
+```
+
+动作放置部分：
+
+```ini
+PreviewFix=1               ; 总开关，0 = 不装鼠标钩子
+PreviewLogOnly=0           ; 1 = 只把状态写进日志，不改内存
+PreviewOnlyUnsnapped=1     ; 只在游戏判定为无效时介入
+PreviewSetSnapWall=1       ; 改写 isSnappingWall
+PreviewSetFloor=0          ; 改写 FloorPreviewZ
+PreviewSetZ=1              ; 把 Z 写成幽灵当前高度
+PreviewWriteHitLoc=1       ; 把 wallHitLoaction 写成幽灵位置
+PreviewHoldMs=150          ; 点击后持续重写多久
 ```
 
 `HoldMs` 不是"缓慢上升"：位置在第一帧就已经到顶了，之后的重写只是为了
@@ -176,8 +197,48 @@ ZeroVelocity=1         ; 保持期间把竖直速度清零
 
 ---
 
-## 6. 已知限制
+### 5.5 动作放置：红区也能落位
 
+游戏在放置动作（H 卡预览）时，幽灵模型是红色就表示"这里不能放"，左键点了只会弹
+"请放置在平面上"。判定结果落在 `A_ClientHPreviewManager` 的三个布尔上：
+
+| 属性 | 含义 |
+|---|---|
+| `isSnappingItem` | 吸附到家具/道具 |
+| `isSnappingWall` | 吸附到墙面锚点（`WallBox_C`） |
+| `FloorPreviewZ` | 吸附到地面 |
+
+三个都为假 = 红色。左键处理函数 `InpActEvt_LeftMouseButton_K2Node_InputKeyEvent`
+读这几个值决定"提交"还是"弹提示"。
+
+做法是在低级鼠标钩子里、**在输入投递给游戏之前**把 `isSnappingWall`、`Z`、
+`wallHitLoaction` 改写成"已吸附到幽灵当前位置"，让游戏走它自己的提交路径——
+位置、朝向、网络 RPC 都是原生的，不碰代码段，也不依赖任何函数地址。
+
+时序上有个坑：`ReceiveTick` 每帧都会重算并写回这几个标志。所以点击时先同步写一次，
+再由工作线程在 `PreviewHoldMs` 内每 5ms 重写一次，盖住那一两帧的重算。日志里的
+`预览[保持结束]` 会回读标志，用来判断是"被改回去了"还是"状态保住了但点击函数不认"。
+
+因为 `PreviewOnlyUnsnapped=1` 默认只在红色时介入，绿色（合法）位置仍然走游戏原逻辑，
+不会被改成贴墙分支。
+
+### 5.5.1 为什么必须按名字在运行时找
+
+这个游戏的玩法类（`A_DummyActor`、`A_ClientHPreviewManager` …）是 AngelScript 声明的
+`ASClass`，dump 里根本没有这些类；dump 里的 `funcs[].addr` 也是 UFunction 对象地址，
+不是代码地址。所以 `UeRuntime.cpp` 用 `GObjects` / `GNames` 在活进程里按名字找类、
+沿 `ChildProperties` 链找属性偏移：
+
+```
+模块基址 + GObjectsRVA(0x0AB0D3D0) -> 块指针表 -> FUObjectItem[24]（对象指针在 +8）
+UObject:  +0x10 Class / +0x18 FName / +0x20 Outer
+UClass :  +0x40 Super / +0x50 ChildProperties
+FProperty: +0x20 Name / +0x34 ElementSize / +0x48 Offset_Internal
+```
+
+首次扫描约 100ms，之后只在实例失效（换场景）时重扫，鼠标回调只做常数次读写。
+
+## 6. 已知限制
 1. **游戏更新即失效。** `GWorldRVA` 与各字段偏移都和具体构建绑定。
    重新 dump 后改 ini / `src/Common/UeOffsets.h` 即可，不用改代码。
 2. **根组件被 attach 时两个坐标不再相等。** 代码会读 `AttachParent` 判断：
@@ -191,6 +252,10 @@ ZeroVelocity=1         ; 保持期间把竖直速度清零
 6. **只支持 x64 目标**，32 位进程会被直接拒绝。
 7. **日志要写在 DLL 同目录**，该目录必须可写。若把 DLL 放进 `Program Files`
    这类受保护目录，日志会写不进去（此时只能靠调试器看 `OutputDebugString`）。
+8. **放置修复有前提**：左键处理函数必须是"读这三个标志"来决定提交。如果它是自己
+   重算一遍几何，改写标志不会生效——日志里会表现为 `预览[改写]` 有记录但点了没反应，
+   此时需要改成钩 `ProcessEvent` 拦截左键函数（或直接调 `OnHActionCheckSuccess`）。
+9. **红区落位可能穿模**：位置是幽灵当前位置，墙面/家具的碰撞不会替你修正。
 
 ---
 
@@ -240,6 +305,8 @@ GameEnhancement/
     │   ├── Api.h              # C ABI 声明
     │   ├── Config.h/.cpp      # ini 读写
     │   ├── Player.h/.cpp      # 解析玩家 + 跳跃工作线程
+    │   ├── UeRuntime.h/.cpp   # 运行时对象表（GObjects/GNames）按名字找类与属性
+    │   ├── PreviewBypass.h/.cpp # 动作放置：鼠标钩子 + 判定状态改写
     │   ├── KeyHook.h/.cpp     # 低级键盘钩子安装/卸载
     │   └── CMakeLists.txt
     └── Injector/

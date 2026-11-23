@@ -6,6 +6,8 @@
 #include "Dll/Config.h"
 #include "Dll/KeyHook.h"
 #include "Dll/Player.h"
+#include "Dll/PreviewBypass.h"
+#include "Dll/ScriptTrace.h"
 
 using namespace ge;
 
@@ -37,7 +39,7 @@ GE_API int GE_QueryState() {
 }
 
 GE_API unsigned GE_AbiVersion() {
-    return 1u;
+    return 2u;  // 2：新增 GE_PreviewState / GE_ForcePlaceNow
 }
 
 GE_API int GE_JumpNow() {
@@ -46,6 +48,47 @@ GE_API int GE_JumpNow() {
     }
     RequestJump();
     return kGeOk;
+}
+
+// 动作放置：查询当前预览状态（0 无管理器 / 1 未在预览 / 2 预览中），并写一行详细日志。
+GE_API int GE_PreviewState() {
+    if (g_installed == 0) {
+        return -1;
+    }
+    return PreviewQueryState();
+}
+
+// 动作放置：立刻按当前幽灵位置改写一次判定状态，不需要真的点鼠标（排错用）。
+GE_API int GE_ForcePlaceNow() {
+    if (g_installed == 0) {
+        return -1;
+    }
+    return PreviewApplyNow();
+}
+
+// 脚本追踪：返回 ProcessEvent 的 vtable 槽位（-1 = 没接管），并写一行日志。
+GE_API int GE_ScriptTraceState() {
+    if (g_installed == 0) {
+        return -1;
+    }
+    return ScriptTraceQuery();
+}
+
+// 脚本追踪：把最近两次左键点击抓到的调用序列写进日志。
+GE_API int GE_TraceDump() {
+    if (g_installed == 0) {
+        return -1;
+    }
+    ScriptTraceDumpCaptures();
+    return 0;
+}
+
+// 直接触发一次提交（不经过左键判定），用于验证红色位置能否落位。
+GE_API int GE_ForceCommit() {
+    if (g_installed == 0) {
+        return -1;
+    }
+    return ScriptTraceForceCommit();
 }
 
 GE_API int GE_Install() {
@@ -73,6 +116,16 @@ GE_API int GE_Install() {
         return kGeErrKeyHook;
     }
 
+    // 放置修复是可选功能：反射链失效时只记录，不影响跳跃。
+    if (!StartPreviewBypass(g_self)) {
+        LogLine("安装：放置修复未启动（其余功能照常）");
+    }
+
+    // 脚本追踪同样可选，且失败时不会改变游戏里的任何东西。
+    if (!StartScriptTrace()) {
+        LogLine("安装：脚本追踪未启动");
+    }
+
     ::InterlockedExchange(&g_installed, 1);
     ::LeaveCriticalSection(&g_lock);
 
@@ -96,6 +149,8 @@ GE_API int GE_Uninstall() {
     // 先落标志，避免卸载途中又有按键请求排进队列。
     ::InterlockedExchange(&g_installed, 0);
 
+    StopPreviewBypass();  // 鼠标钩子只读内存，先摘它
+    StopScriptTrace();    // vtable 补丁必须先还原，否则卸载后就是野指针
     StopKeyHook();    // 必须是先摘钩子：钩子回调会调用 RequestJump
     StopJumpWorker();
 

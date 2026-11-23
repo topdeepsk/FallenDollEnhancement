@@ -49,6 +49,11 @@ void PrintUsage() {
         "  --dll <路径>         指定要注入的 DLL（默认：exe 同目录的 GameEnhancement.dll）\n"
         "  --eject              只卸载已注入的实例，不重新注入\n"
         "  --jump               让已注入的实例立刻跳一次（用于验证，不必按 Q）\n"
+        "  --preview            打印动作放置的预览状态（不点鼠标，只读）\n"
+        "  --place              按当前幽灵位置强制改写一次放置判定（排错用）\n"
+        "  --script             打印 ProcessEvent 接管状态（vtable 槽位，只读）\n"
+        "  --dump               把抓到的左键点击调用序列写进日志\n"
+        "  --commit             直接调用提交函数（不经过左键判定）\n"
         "  --no-unload          不先卸载旧实例，直接注入（默认会先卸再注）\n"
         "  --skip-uninstall     卸载时跳过 GE_Uninstall，只做 FreeLibrary\n"
         "  --wait <秒>          等待进程出现，最多等待指定秒数\n"
@@ -66,6 +71,11 @@ struct Options {
     std::wstring dllPath;
     bool ejectOnly = false;
     bool jumpOnly = false;
+    bool previewOnly = false;
+    bool placeOnly = false;
+    bool scriptState = false;
+    bool dumpTrace = false;
+    bool commitNow = false;
     bool skipUnload = false;
     bool skipUninstallCall = false;
     int waitSeconds = 0;
@@ -85,6 +95,21 @@ bool ParseArgs(int argc, char** argv, Options& options) {
         } else if (std::strcmp(arg, "--jump") == 0) {
             options.jumpOnly = true;
             options.skipUnload = true;  // 触发跳跃不该先卸载再装
+        } else if (std::strcmp(arg, "--preview") == 0) {
+            options.previewOnly = true;
+            options.skipUnload = true;
+        } else if (std::strcmp(arg, "--place") == 0) {
+            options.placeOnly = true;
+            options.skipUnload = true;
+        } else if (std::strcmp(arg, "--script") == 0) {
+            options.scriptState = true;
+            options.skipUnload = true;
+        } else if (std::strcmp(arg, "--dump") == 0) {
+            options.dumpTrace = true;
+            options.skipUnload = true;
+        } else if (std::strcmp(arg, "--commit") == 0) {
+            options.commitNow = true;
+            options.skipUnload = true;
         } else if (std::strcmp(arg, "--no-unload") == 0) {
             options.skipUnload = true;
         } else if (std::strcmp(arg, "--skip-uninstall") == 0) {
@@ -203,8 +228,9 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    // --- 可选：直接触发一次跳跃（验证链路，不必按 Q） ---
-    if (options.jumpOnly) {
+    // --- 可选：直接调一个导出做验证（跳跃 / 放置状态 / 强制落位），不必切回游戏操作 ---
+    if (options.jumpOnly || options.previewOnly || options.placeOnly || options.scriptState ||
+        options.dumpTrace || options.commitNow) {
         uintptr_t base = existing;
         if (base == 0) {
             if (!ge::InjectDll(info.pid, process, options.dllPath, error)) {
@@ -214,21 +240,45 @@ int main(int argc, char** argv) {
             }
             std::wstring ignored;
             base = ge::FindRemoteModule(info.pid, moduleName, ignored);
-            ::Sleep(200);  // 等 DllMain 的安装线程把钩子和 worker 拉起来
+            // 等 DllMain 的安装线程把钩子、worker、首次反射扫描跑完。
+            ::Sleep(options.jumpOnly ? 200 : 1500);
         }
 
+        const char* exportName = options.jumpOnly ? "GE_JumpNow"
+                                 : options.placeOnly ? "GE_ForcePlaceNow"
+                                 : options.scriptState ? "GE_ScriptTraceState"
+                                 : options.dumpTrace ? "GE_TraceDump"
+                                 : options.commitNow ? "GE_ForceCommit"
+                                                     : "GE_PreviewState";
         DWORD code = 0;
-        if (!ge::CallExport(process, base, options.dllPath, "GE_JumpNow", code, error)) {
-            std::printf("[失败] 调用 GE_JumpNow 失败：%s\n", error.c_str());
+        if (!ge::CallExport(process, base, options.dllPath, exportName, code, error)) {
+            std::printf("[失败] 调用 %s 失败：%s\n", exportName, error.c_str());
             ::CloseHandle(process);
             return 1;
         }
-        std::printf("[4/4] 已触发跳跃，返回 %lu（0 = 成功）\n",
-                    static_cast<unsigned long>(code));
-        std::printf("      看 %s 确认 z 变化\n",
+
+        if (options.jumpOnly) {
+            std::printf("[4/4] 已触发跳跃，返回 %lu（0 = 成功）\n", static_cast<unsigned long>(code));
+        } else if (options.previewOnly) {
+            static const char* kState[] = {"找不到预览管理器", "管理器在，但当前不在预览", "预览中"};
+            const char* text = (code <= 2) ? kState[code] : "未知";
+            std::printf("[4/4] 预览状态：%s（返回值 %lu）\n", text, static_cast<unsigned long>(code));
+        } else if (options.scriptState) {
+            std::printf("[4/4] ProcessEvent 槽位：0x%lX（-1 = 未接管）\n",
+                        static_cast<unsigned long>(code));
+        } else if (options.dumpTrace) {
+            std::printf("[4/4] 已导出捕获序列，返回 %lu\n", static_cast<unsigned long>(code));
+        } else if (options.commitNow) {
+            std::printf("[4/4] 强制提交返回 %lu（0 = 已调用，负数 = 解析失败）\n",
+                        static_cast<unsigned long>(code));
+        } else {
+            std::printf("[4/4] 强制落位返回 %lu（3 = 已改写，2 = 本来有效，1 = 不在预览，0 = 未就绪）\n",
+                        static_cast<unsigned long>(code));
+        }
+        std::printf("      详情见 %s\n",
                     ToUtf8(ge::GetDirectoryOf(options.dllPath) + L"GameEnhancement.log").c_str());
         ::CloseHandle(process);
-        return code == 0 ? 0 : 1;
+        return (code != 0 && code != static_cast<DWORD>(-1)) ? 0 : 1;
     }
 
     // --- 4. 注入 ---

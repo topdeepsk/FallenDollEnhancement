@@ -55,4 +55,46 @@ inline constexpr uint32_t kCmcVelocityZ              = kCmcVelocity + 16;
 // TArray 布局（UE5）：Data +0x00 / Num +0x08 / Max +0x0C
 inline constexpr uint32_t kTArrayNum                 = 0x08;
 
+// ---------------------------------------------------------------------------
+// 运行时反射（不依赖 dump 的类表）
+//
+// 玩法逻辑跑在 AngelScript 层：A_* / U_* 这些类在 dump 里查不到（UClass 是 ASClass），
+// 函数也没有原生 Func 指针。所以功能只能"按名字在运行时找对象、找属性"。
+//
+// 下面是对象表本身的偏移，来自 dump 的 meta 行（gobjects / gnames 减 module_base），
+// 并在运行中的进程上逐条验证过；它们是引擎结构，不随游戏内容变化，只有引擎升级才需要改。
+// ---------------------------------------------------------------------------
+inline constexpr uintptr_t kGObjectsRva              = 0x0AB0D3D0;  // FUObjectItem** 块指针表
+inline constexpr uintptr_t kGNamesRva                = 0x0AD5C080;  // FNamePool
+
+// UObject
+inline constexpr uint32_t kUObjectClass              = 0x10;  // UClass*
+inline constexpr uint32_t kUObjectName               = 0x18;  // FName{Index, Number}
+inline constexpr uint32_t kUObjectOuter              = 0x20;  // UObject*
+
+// UStruct / UClass
+inline constexpr uint32_t kUStructSuper              = 0x40;  // UStruct*
+inline constexpr uint32_t kUStructChildren           = 0x48;  // UField*（UFunction 链）
+inline constexpr uint32_t kUStructChildProperties    = 0x50;  // FField*（属性链）
+inline constexpr uint32_t kUStructPropertiesSize     = 0x58;  // uint32
+
+// FField / FProperty（UE5.4+）
+inline constexpr uint32_t kFFieldNext                = 0x18;
+inline constexpr uint32_t kFFieldName                = 0x20;  // FName
+inline constexpr uint32_t kFPropertyElementSize      = 0x34;  // int32
+inline constexpr uint32_t kFPropertyOffset           = 0x48;  // int32，属性在实例内的字节偏移
+
+// FNamePool
+inline constexpr uint32_t kNamePoolCurrentBlock      = 0x08;
+inline constexpr uint32_t kNamePoolBlocks            = 0x10;
+inline constexpr uint32_t kNameEntryLenShift         = 6;      // 头 2 字节里的长度位
+inline constexpr uint32_t kNameEntryWideBit          = 15;
+inline constexpr uint32_t kNameEntryMaxLen           = 511;
+inline constexpr uint32_t kNameBlockSize             = 0x20000;  // 每块 128KB
+
+// GUObjectArray 的块
+inline constexpr uint32_t kObjectItemStride          = 24;     // FUObjectItem
+inline constexpr uint32_t kObjectItemObject          = 8;      // 对象指针在 item 内的偏移
+inline constexpr uint32_t kObjectChunkSize           = 65536;  // 每块 item 数
+
 }  // namespace ge::ue

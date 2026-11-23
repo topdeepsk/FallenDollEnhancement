@@ -3,6 +3,9 @@ add_library(GameEnhancement SHARED
     Config.cpp
     Player.cpp
     KeyHook.cpp
+    UeRuntime.cpp
+    PreviewBypass.cpp
+    ScriptTrace.cpp
 )
 
 target_link_libraries(GameEnhancement PRIVATE

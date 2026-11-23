@@ -1,0 +1,570 @@
+[
+ {
+  "addr": "0x7FF41AD4C540",
+  "class": "A_ClientHPreviewManager",
+  "props": {
+   "DefaultSceneRoot": {
+    "type": "ObjectProperty",
+    "offset": 688,
+    "value": {
+     "addr": "0x7FF41AD4CF90",
+     "class": "SceneComponent",
+     "name": "DefaultSceneRoot"
+    }
+   },
+   "snappingItemOBJ": {
+    "type": "ObjectProperty",
+    "offset": 696,
+    "value": null
+   },
+   "snappingWallOBJ": {
+    "type": "ObjectProperty",
+    "offset": 704,
+    "value": null
+   },
+   "itemBoxList": {
+    "type": "ArrayProperty",
+    "offset": 712,
+    "value": {
+     "raw": "00000000000000000000000000000000"
+    }
+   },
+   "wallBoxList": {
+    "type": "ArrayProperty",
+    "offset": 728,
+    "value": {
+     "raw": "00000000000000000000000000000000"
+    }
+   },
+   "poseTips": {
+    "type": "ObjectProperty",
+    "offset": 744,
+    "value": null
+   },
+   "preview": {
+    "type": "ObjectProperty",
+    "offset": 752,
+    "value": null
+   },
+   "OutLinePP": {
+    "type": "ObjectProperty",
+    "offset": 760,
+    "value": null
+   },
+   "targetItem": {
+    "type": "ObjectProperty",
+    "offset": 768,
+    "value": null
+   },
+   "AnimData": {
+    "type": "StructProperty",
+    "offset": 784,
+    "value": {
+     "raw": "00000000000000000000000000000000"
+    }
+   },
+   "CardData": {
+    "type": "StructProperty",
+    "offset": 1936,
+    "value": {
+     "raw": "e8dbba5af77f00000000000000000000"
+    }
+   },
+   "startVector": {
+    "type": "StructProperty",
+    "offset": 2336,
+    "value": {
+     "raw": "00000000000000000000000000000000"
+    }
+   },
+   "wallHitLoaction": {
+    "type": "StructProperty",
+    "offset": 2360,
+    "value": {
+     "raw": "00000000000000000000000000000000"
+    }
+   },
+   "CurrCardItems": {
+    "type": "ArrayProperty",
+    "offset": 2384,
+    "value": {
+     "raw": "00000000000000000000000000000000"
+    }
+   },
+   "LevelItems": {
+    "type": "ArrayProperty",
+    "offset": 2400,
+    "value": {
+     "raw": "00000000000000000000000000000000"
+    }
+   },
+   "PHiddActor": {
+    "type": "ArrayProperty",
+    "offset": 2416,
+    "value": {
+     "raw": "00000000000000000000000000000000"
+    }
+   },
+   "IndexPoint": {
+    "type": "ObjectProperty",
+    "offset": 2432,
+    "value": {
+     "addr": "0x7FF41AD4D2B0",
+     "class": "U_AC_IndexPoint",
+     "name": "IndexPoint"
+    }
+   },
+   "EventLookAtTarget": {
+    "type": "MulticastInlineDelegateProperty",
+    "offset": 2440,
+    "value": {
+     "raw": "00000000000000000000000000000000"
+    }
+   },
+   "EventOnCheckModeChange": {
+    "type": "MulticastInlineDelegateProperty",
+    "offset": 2456,
+    "value": {
+     "raw": "00000000000000000000000000000000"
+    }
+   },
+   "EventPreviewPoseMode": {
+    "type": "MulticastInlineDelegateProperty",
+    "offset": 2472,
+    "value": {
+     "raw": "00000000000000000000000000000000"
+    }
+   },
+   "OnPrePlayHCard": {
+    "type": "MulticastInlineDelegateProperty",
+    "offset": 2488,
+    "value": {
+     "raw": "00000000000000000000000000000000"
+    }
+   },
+   "OnTcpCheckPlayHCard": {
+    "type": "MulticastInlineDelegateProperty",
+    "offset": 2504,
+    "value": {
+     "raw": "00000000000000000000000000000000"
+    }
+   },
+   "EventShouUIWaring": {
+    "type": "MulticastInlineDelegateProperty",
+    "offset": 2520,
+    "value": {
+     "raw": "00000000000000000000000000000000"
+    }
+   },
+   "EventQuitHPreviewState": {
+    "type": "MulticastInlineDelegateProperty",
+    "offset": 2536,
+    "value": {
+     "raw": "00000000000000000000000000000000"
+    }
+   },
+   "bVRClickUI": {
+    "type": "BoolProperty",
+    "offset": 2552,
+    "value": false
+   },
+   "FloorPreviewZ": {
+    "type": "BoolProperty",
+    "offset": 2553,
+    "value": false
+   },
+   "isSnappingItem": {
+    "type": "BoolProperty",
+    "offset": 2554,
+    "value": false
+   },
+   "isSnappingWall": {
+    "type": "BoolProperty",
+    "offset": 2555,
+    "value": false
+   },
+   "Z": {
+    "type": "DoubleProperty",
+    "offset": 2560,
+    "value": 0.0
+   },
+   "FlyCard": {
+    "type": "ArrayProperty",
+    "offset": 2568,
+    "value": {
+     "raw": "00000000000000000000000000000000"
+    }
+   },
+   "EnhancedInputComp": {
+    "type": "ObjectProperty",
+    "offset": 2592,
+    "value": null
+   },
+   "PreviewInputComp": {
+    "type": "ObjectProperty",
+    "offset": 2600,
+    "value": null
+   }
+  },
+  "instance_name": "Default__A_ClientHPreviewManager"
+ },
+ {
+  "addr": "0x18223DC1780",
+  "class": "A_ClientHPreviewManager",
+  "props": {
+   "DefaultSceneRoot": {
+    "type": "ObjectProperty",
+    "offset": 688,
+    "value": {
+     "addr": "0x182E8CA8FE0",
+     "class": "SceneComponent",
+     "name": "DefaultSceneRoot"
+    }
+   },
+   "snappingItemOBJ": {
+    "type": "ObjectProperty",
+    "offset": 696,
+    "value": null
+   },
+   "snappingWallOBJ": {
+    "type": "ObjectProperty",
+    "offset": 704,
+    "value": null
+   },
+   "itemBoxList": {
+    "type": "ArrayProperty",
+    "offset": 712,
+    "value": {
+     "raw": "00000000000000000000000000000000"
+    }
+   },
+   "wallBoxList": {
+    "type": "ArrayProperty",
+    "offset": 728,
+    "value": {
+     "raw": "805f2eac800100001a00000030000000"
+    }
+   },
+   "poseTips": {
+    "type": "ObjectProperty",
+    "offset": 744,
+    "value": {
+     "addr": "0x18252A94ED0",
+     "class": "UIPoseTips_C",
+     "name": "UIPoseTips_C"
+    }
+   },
+   "preview": {
+    "type": "ObjectProperty",
+    "offset": 752,
+    "value": {
+     "addr": "0x1834F934AE0",
+     "class": "A_ClientHPreviewGroup",
+     "name": "A_ClientHPreviewGroup"
+    }
+   },
+   "OutLinePP": {
+    "type": "ObjectProperty",
+    "offset": 760,
+    "value": null
+   },
+   "targetItem": {
+    "type": "ObjectProperty",
+    "offset": 768,
+    "value": null
+   },
+   "AnimData": {
+    "type": "StructProperty",
+    "offset": 784,
+    "value": {
+     "raw": "2402000000000000b04b849c80010000"
+    }
+   },
+   "CardData": {
+    "type": "StructProperty",
+    "offset": 1936,
+    "value": {
+     "raw": "e8dbba5af77f0000dd01000000000000"
+    }
+   },
+   "startVector": {
+    "type": "StructProperty",
+    "offset": 2336,
+    "value": {
+     "raw": "00000000000000000000000000000000"
+    }
+   },
+   "wallHitLoaction": {
+    "type": "StructProperty",
+    "offset": 2360,
+    "value": {
+     "raw": "00000000000000000000000000000000"
+    }
+   },
+   "CurrCardItems": {
+    "type": "ArrayProperty",
+    "offset": 2384,
+    "value": {
+     "raw": "00000000000000000000000000000000"
+    }
+   },
+   "LevelItems": {
+    "type": "ArrayProperty",
+    "offset": 2400,
+    "value": {
+     "raw": "00eb58ac800100001b00000030000000"
+    }
+   },
+   "PHiddActor": {
+    "type": "ArrayProperty",
+    "offset": 2416,
+    "value": {
+     "raw": "406eb3d1820100000800000016000000"
+    }
+   },
+   "IndexPoint": {
+    "type": "ObjectProperty",
+    "offset": 2432,
+    "value": {
+     "addr": "0x18255ACAAB0",
+     "class": "U_AC_IndexPoint",
+     "name": "IndexPoint"
+    }
+   },
+   "EventLookAtTarget": {
+    "type": "MulticastInlineDelegateProperty",
+    "offset": 2440,
+    "value": {
+     "raw": "40bccfe8820100000100000004000000"
+    }
+   },
+   "EventOnCheckModeChange": {
+    "type": "MulticastInlineDelegateProperty",
+    "offset": 2456,
+    "value": {
+     "raw": "00000000000000000000000000000000"
+    }
+   },
+   "EventPreviewPoseMode": {
+    "type": "MulticastInlineDelegateProperty",
+    "offset": 2472,
+    "value": {
+     "raw": "80bccfe8820100000100000004000000"
+    }
+   },
+   "OnPrePlayHCard": {
+    "type": "MulticastInlineDelegateProperty",
+    "offset": 2488,
+    "value": {
+     "raw": "c0bccfe8820100000100000004000000"
+    }
+   },
+   "OnTcpCheckPlayHCard": {
+    "type": "MulticastInlineDelegateProperty",
+    "offset": 2504,
+    "value": {
+     "raw": "00bdcfe8820100000100000004000000"
+    }
+   },
+   "EventShouUIWaring": {
+    "type": "MulticastInlineDelegateProperty",
+    "offset": 2520,
+    "value": {
+     "raw": "00000000000000000000000000000000"
+    }
+   },
+   "EventQuitHPreviewState": {
+    "type": "MulticastInlineDelegateProperty",
+    "offset": 2536,
+    "value": {
+     "raw": "00bccfe8820100000100000004000000"
+    }
+   },
+   "bVRClickUI": {
+    "type": "BoolProperty",
+    "offset": 2552,
+    "value": false
+   },
+   "FloorPreviewZ": {
+    "type": "BoolProperty",
+    "offset": 2553,
+    "value": false
+   },
+   "isSnappingItem": {
+    "type": "BoolProperty",
+    "offset": 2554,
+    "value": false
+   },
+   "isSnappingWall": {
+    "type": "BoolProperty",
+    "offset": 2555,
+    "value": false
+   },
+   "Z": {
+    "type": "DoubleProperty",
+    "offset": 2560,
+    "value": 0.0
+   },
+   "FlyCard": {
+    "type": "ArrayProperty",
+    "offset": 2568,
+    "value": {
+     "raw": "00000000000000000000000000000000"
+    }
+   },
+   "EnhancedInputComp": {
+    "type": "ObjectProperty",
+    "offset": 2592,
+    "value": {
+     "addr": "0x180AC142B00",
+     "class": "EnhancedInputComponent",
+     "name": "EnhancedInputComponent"
+    }
+   },
+   "PreviewInputComp": {
+    "type": "ObjectProperty",
+    "offset": 2600,
+    "value": {
+     "addr": "0x180AD179280",
+     "class": "InputComponent",
+     "name": "InputComponent"
+    }
+   }
+  },
+  "instance_name": "A_ClientHPreviewManager"
+ },
+ {
+  "addr": "0x7FF41AD4B9A8",
+  "class": "A_ClientHPreviewGroup",
+  "props": {
+   "DefaultSceneRoot": {
+    "type": "ObjectProperty",
+    "offset": 688,
+    "value": {
+     "addr": "0x7FF41AD4BD50",
+     "class": "SceneComponent",
+     "name": "DefaultSceneRoot"
+    }
+   },
+   "SpringArm": {
+    "type": "ObjectProperty",
+    "offset": 696,
+    "value": {
+     "addr": "0x7FF41AD4BFA0",
+     "class": "SpringArmComponent",
+     "name": "SpringArm"
+    }
+   },
+   "Target": {
+    "type": "ObjectProperty",
+    "offset": 704,
+    "value": {
+     "addr": "0x7FF41AD4C2F0",
+     "class": "SceneComponent",
+     "name": "Target"
+    }
+   },
+   "CharacterList": {
+    "type": "ArrayProperty",
+    "offset": 712,
+    "value": {
+     "raw": "00000000000000000000000000000000"
+    }
+   },
+   "LatchedBedActor": {
+    "type": "ObjectProperty",
+    "offset": 808,
+    "value": null
+   },
+   "OutlineErrorMat": {
+    "type": "ObjectProperty",
+    "offset": 816,
+    "value": null
+   },
+   "OutlineNormalMat": {
+    "type": "ObjectProperty",
+    "offset": 824,
+    "value": null
+   },
+   "EventShouUIWaring": {
+    "type": "MulticastInlineDelegateProperty",
+    "offset": 832,
+    "value": {
+     "raw": "00000000000000000000000000000000"
+    }
+   }
+  },
+  "instance_name": "Default__A_ClientHPreviewGroup"
+ },
+ {
+  "addr": "0x1834F934AE0",
+  "class": "A_ClientHPreviewGroup",
+  "props": {
+   "DefaultSceneRoot": {
+    "type": "ObjectProperty",
+    "offset": 688,
+    "value": {
+     "addr": "0x181AE2C5A40",
+     "class": "SceneComponent",
+     "name": "DefaultSceneRoot"
+    }
+   },
+   "SpringArm": {
+    "type": "ObjectProperty",
+    "offset": 696,
+    "value": {
+     "addr": "0x18165B50310",
+     "class": "SpringArmComponent",
+     "name": "SpringArm"
+    }
+   },
+   "Target": {
+    "type": "ObjectProperty",
+    "offset": 704,
+    "value": {
+     "addr": "0x1824644E050",
+     "class": "SceneComponent",
+     "name": "Target"
+    }
+   },
+   "CharacterList": {
+    "type": "ArrayProperty",
+    "offset": 712,
+    "value": {
+     "raw": "601fc962820100000300000004000000"
+    }
+   },
+   "LatchedBedActor": {
+    "type": "ObjectProperty",
+    "offset": 808,
+    "value": null
+   },
+   "OutlineErrorMat": {
+    "type": "ObjectProperty",
+    "offset": 816,
+    "value": {
+     "addr": "0x1834DF13D90",
+     "class": "MaterialInstanceConstant",
+     "name": "M_Mask_002_Inst3"
+    }
+   },
+   "OutlineNormalMat": {
+    "type": "ObjectProperty",
+    "offset": 824,
+    "value": {
+     "addr": "0x1834DF11DB0",
+     "class": "MaterialInstanceConstant",
+     "name": "M_Mask_001_Inst1"
+    }
+   },
+   "EventShouUIWaring": {
+    "type": "MulticastInlineDelegateProperty",
+    "offset": 832,
+    "value": {
+     "raw": "00d27bac800100000100000004000000"
+    }
+   }
+  },
+  "instance_name": "A_ClientHPreviewGroup"
+ }
+]

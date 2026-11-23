@@ -1,0 +1,250 @@
+# GameEnhancement
+
+一个最小可用的 UE5 外部增强工程：**一次构建产出注入器 exe 与被注入的 dll**，
+命令行把 dll 注入指定进程，dll 在游戏里监听 `Q`，按下就把玩家角色的 Z 坐标
+瞬间抬高一段距离。
+
+面向 `Paralogue-Win64-Shipping.exe`（Fallen Doll / Paralogue）编写，
+偏移取自本仓库 `插件项目/dump` 的同版本 dump，不是估计值。
+
+---
+
+## 1. 产物
+
+| 产物 | 说明 |
+|---|---|
+| `build/bin/ge_inject.exe` | 注入器（x64 控制台程序），`CreateRemoteThread` + `LoadLibraryW` |
+| `build/bin/GameEnhancement.dll` | 被注入的模块，导出 `GE_Install` / `GE_Uninstall` / `GE_QueryState` / `GE_JumpNow` / `GE_AbiVersion` |
+| `build/bin/GameEnhancement.ini` | 首次注入时自动生成的可调参数文件 |
+| `build/bin/GameEnhancement.log` | 运行日志，与 ini 同目录 |
+
+DLL 用 `/MT` 静态链接 CRT，依赖只有 `KERNEL32.dll` 与 `USER32.dll`，
+换机器不需要装 VC 运行库。
+
+---
+
+## 2. 构建
+
+```bat
+build.cmd
+```
+
+`build.cmd` 会自己找 Visual Studio 并加载 `vcvars64`，然后
+`cmake -G Ninja -DCMAKE_BUILD_TYPE=Release` + `cmake --build`。
+如果已经在 VS 开发者命令提示符里，也可以手动：
+
+```bat
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+```
+
+要求：CMake ≥ 3.20、Ninja、MSVC x64 工具集（只支持 Windows / x64）。
+
+> 重新构建前请先卸载：DLL 被游戏加载时文件是锁着的，链接会报 `LNK1104`。
+
+---
+
+## 3. 用法
+
+```bat
+:: 注入（默认在 exe 同目录找 GameEnhancement.dll）
+ge_inject.exe Paralogue-Win64-Shipping.exe
+
+:: 游戏还没起来，最多等 60 秒
+ge_inject.exe Paralogue-Win64-Shipping.exe --wait 60
+
+:: 指定 DLL 路径 / 按 PID 注入
+ge_inject.exe 12345 --dll D:\tools\GameEnhancement.dll
+
+:: 只卸载，不重新注入
+ge_inject.exe Paralogue-Win64-Shipping.exe --eject
+
+:: 不按 Q，直接触发一次跳跃（验证链路）
+ge_inject.exe Paralogue-Win64-Shipping.exe --jump
+```
+
+**重复注入**：直接再跑一次同样的命令即可。注入器会先远程调用
+`GE_Uninstall`（摘钩子、停工作线程），再 `FreeLibrary`，确认模块真的消失后
+才重新 `LoadLibrary`。
+
+| 选项 | 作用 |
+|---|---|
+| `--dll <路径>` | 指定 DLL |
+| `--eject` | 只卸载 |
+| `--jump` | 让已注入的实例立刻跳一次，不必按 Q（排错用） |
+| `--no-unload` | 跳过卸载直接注入（调试用，会留下旧实例的钩子） |
+| `--skip-uninstall` | 卸载时跳过 `GE_Uninstall`，只 `FreeLibrary`（靠 DllMain 兜底） |
+| `--wait <秒>` | 等待进程出现 |
+
+成功后会打印模块基址和日志路径。切回游戏按 `Q` 即触发。
+
+> 游戏若以管理员权限运行，注入器也必须以管理员运行，否则 `OpenProcess` 会失败（错误码 5）。
+
+---
+
+## 4. 配置
+
+DLL 同目录的 `GameEnhancement.ini`，改完重新注入即生效：
+
+```ini
+GWorldRVA=0x0AFB9F48   ; GWorld 全局指针在模块内的 RVA
+WorldZOffset=0x220     ; RootComponent 里 ComponentToWorld.Translation.Z（非反射字段）
+JumpHeight=180         ; 一次抬升的高度（UE 单位，约等于厘米）
+HoldMs=300             ; 抬升后保持多久，0 = 只写一帧
+TickMs=8               ; 保持期间的重写间隔
+HotkeyVK=0x51          ; 触发键虚拟键码，0x51 = Q
+ZeroVelocity=1         ; 保持期间把竖直速度清零
+```
+
+`HoldMs` 不是"缓慢上升"：位置在第一帧就已经到顶了，之后的重写只是为了
+**不让 CharacterMovement 把它当成悬空立刻拽回地面**。设为 0 会看到瞬移一下
+马上落回，通常不可见。
+
+---
+
+## 5. 实现要点
+
+### 5.1 定位玩家
+
+纯反射链，全部按偏移读，不缓存任何实例指针（场上同时有 11 个 `AvatarPawn_C`，
+切场景/换角色后旧指针必然失效）：
+
+```
+模块基址 + GWorldRVA            -> UWorld*
+  + 0x228  OwningGameInstance   -> UGameInstance*
+  + 0x038  LocalPlayers (TArray)-> ULocalPlayer*[0]
+  + 0x030  PlayerController     -> APlayerController*
+  + 0x2F0  Pawn                 -> APawn*（AvatarPawn_C）
+  + 0x1B8  RootComponent        -> UCapsuleComponent*
+  + 0x148  RelativeLocation     -> FVector（3 × double）
+```
+
+跳跃时写 `RelativeLocation.Z`，**同时**写 `RootComponent + 0x220`
+（`ComponentToWorld.Translation.Z`），并可选择把 `CharacterMovement + 0xD8 + 16`
+（`Velocity.Z`）清零。
+
+### 5.1.1 为什么必须两个都写（本项目踩过的坑）
+
+只写 `RelativeLocation` 不会调用 `USceneComponent::UpdateComponentToWorld()`，
+渲染与物理继续使用缓存的世界变换。现象极具欺骗性：
+
+- 内存里的 `RelativeLocation.Z` 确实变了，日志里 Z 一路涨到 3162；
+- 但画面上角色一动不动，相机 Z 也纹丝不动；
+- 因为 `ComponentToWorld` 还停在原点，游戏每帧都按它渲染。
+
+实测数据（同一帧）：`RelativeLocation.Z = 1352.2`，而 `ComponentToWorld.Z = 92.2`。
+两个都写之后，世界 Z 立刻从 92.2 到 272.2，相机随之升到 356，随后重力接管开始下坠。
+
+`ComponentToWorld` 是非反射成员，dump 里查不到，只能手工定位：
+`FTransform` 起始于 `+0x1F0`，`Translation` 三元组在 `+0x210`（X/Y/Z 依次 `+0x210/+0x218/+0x220`）。
+换构建后这个偏移要重新找，所以它放在 ini 的 `WorldZOffset` 里而不是写死。
+
+### 5.2 偏移来源
+
+| 字段 | 偏移 | 出自 dump 中的类 |
+|---|---|---|
+| `GWorld` RVA | `0x0AFB9F48` | dump `meta`（gworld − module_base） |
+| `OwningGameInstance` | `0x228` | `World` |
+| `LocalPlayers` | `0x038` | `GameInstance` |
+| `PlayerController` | `0x030` | `Player` / `LocalPlayer` |
+| `Pawn` | `0x2F0` | `Controller` |
+| `RootComponent` | `0x1B8` | `Actor` / `Character` |
+| `RelativeLocation` | `0x148` | `SceneComponent` |
+| `ComponentToWorld.Translation` | `0x210`（Z 在 `0x220`） | **非反射**，手工定位 |
+| `CharacterMovement` | `0x338` | `Character` |
+| `Velocity` | `0x0D8` | `AvatarMovementComponent` |
+
+`FVector` 是 **24 字节**（UE5 LWC，3 × float64），Z 在 `+16`。
+用 float 写会直接写坏数据。
+
+### 5.3 钩子
+
+- 键盘：`WH_KEYBOARD_LL` 低级钩子，装在独立线程的消息循环里
+  （低级钩子的回调由安装线程的消息循环派发，不能挂在没有消息泵的线程上）。
+- 只处理 `WM_KEYDOWN`，并用"键已按下"标志把长按压成一次；
+  屏蔽 `LLKHF_INJECTED`；只在游戏窗口处于前台时触发。
+- 钩子永远 `CallNextHookEx` 放行，不影响游戏自己的 Q 输入。
+- 卸载顺序：先 `UnhookWindowsHookEx` 再停线程，然后才允许 `FreeLibrary`。
+
+### 5.4 卸载与重复注入
+
+`DllMain` 的 `DLL_PROCESS_DETACH`（`reserved == nullptr`，即 `FreeLibrary`）
+也会调 `GE_Uninstall`，所以即使注入器用 `--skip-uninstall` 也不会留下悬空钩子。
+
+`GE_Install` / `GE_Uninstall` 都是幂等的，用临界区串行化，避免
+"DllMain 的自动安装线程"与"注入器的远程卸载"撞车。
+
+---
+
+## 6. 已知限制
+
+1. **游戏更新即失效。** `GWorldRVA` 与各字段偏移都和具体构建绑定。
+   重新 dump 后改 ini / `src/Common/UeOffsets.h` 即可，不用改代码。
+2. **根组件被 attach 时两个坐标不再相等。** 代码会读 `AttachParent` 判断：
+   无父级时两份写同一个值；有父级时保持原来的差值。父级若带缩放（极少见），
+   实际抬升量会被父级变换缩放。
+3. **只改位置，不改物理状态。** 保持结束后角色由重力自然落回；
+   如果游戏用 `MOVE_None` 或自定义移动模式接管，可能看到不下落或立刻回弹，
+   此时把 `HoldMs` 调大或改用速度驱动（写 `Velocity.Z`）更稳。
+4. **写世界变换跳过了碰撞扫描。** 抬得太高可能穿进几何体，落地位置由物理自行修正。
+5. **单机。** 任何联机/带反作弊的会话都会拦注入或导致不同步。
+6. **只支持 x64 目标**，32 位进程会被直接拒绝。
+7. **日志要写在 DLL 同目录**，该目录必须可写。若把 DLL 放进 `Program Files`
+   这类受保护目录，日志会写不进去（此时只能靠调试器看 `OutputDebugString`）。
+
+---
+
+## 7. 排错
+
+DLL 日志：`GameEnhancement.log`，与 `GameEnhancement.ini` 同在 **GameEnhancement.dll 所在目录**
+（注入器会打印完整路径）。这样日志、配置、DLL 三者放在一起，拷走一份就齐全了。
+
+**先跑 `tools/probe.py`**，它只读地走一遍解析链并把每一步地址打出来，
+不注入、不改游戏，是判断"到底是偏移过期还是游戏状态不对"最快的办法：
+
+```bat
+python tools\probe.py Paralogue-Win64-Shipping.exe
+python tools\probe.py Paralogue-Win64-Shipping.exe --bump 20   :: 可逆写测试
+```
+
+`--bump 20` 会抬 20 厘米、150ms 后读回、再还原原值，用来确认写 Z 是否
+真的推动角色。注意它会同时写 `RelativeLocation` 和 `ComponentToWorld`——
+只写前者画面不会动（见 §5.1.1）。
+
+| 现象 | 原因 |
+|---|---|
+| `OpenProcess 失败（错误码 5）` | 游戏是管理员权限，注入器也要提权 |
+| `LoadLibraryW 返回 0` | 位数不符，或 DLL 依赖缺失（本工程应为 0 依赖） |
+| 注入成功但按 Q 无反应 | 看日志有没有 `解析玩家失败`：多半在菜单/加载界面，或偏移已过期 |
+| 日志里有 `跳跃 #N` 但画面不动 | `WorldZOffset` 过期（写到了错误地址），用 `probe.py --bump` 复测 |
+| `FreeLibrary 之后模块仍然存在` | 有别的工具/线程持有引用，重启游戏再试 |
+| 链接报 `LNK1104` | DLL 正被游戏加载，先 `--eject` |
+
+---
+
+## 8. 目录结构
+
+```
+GameEnhancement/
+├── CMakeLists.txt
+├── build.cmd                  # 一键构建（自动找 VS）
+├── tools/
+│   └── probe.py               # 只读验证偏移链（可选 --bump 做可逆写测试）
+└── src/
+    ├── Common/
+    │   ├── UeOffsets.h        # 偏移表 + 来源注释
+    │   ├── Win32Util.h/.cpp   # 自读自写内存、日志
+    │   └── CMakeLists.txt
+    ├── Dll/
+    │   ├── dllmain.cpp        # DllMain + 四个导出
+    │   ├── Api.h              # C ABI 声明
+    │   ├── Config.h/.cpp      # ini 读写
+    │   ├── Player.h/.cpp      # 解析玩家 + 跳跃工作线程
+    │   ├── KeyHook.h/.cpp     # 低级键盘钩子安装/卸载
+    │   └── CMakeLists.txt
+    └── Injector/
+        ├── main.cpp           # 命令行
+        ├── Injector.h/.cpp    # 注入 / 卸载 / 远程调用
+        ├── PeExport.h/.cpp    # 解析导出表取 RVA
+        └── CMakeLists.txt
+```

@@ -29,7 +29,6 @@ LRESULT CALLBACK KeyboardProc(int code, WPARAM wParam, LPARAM lParam) {
         const auto* info = reinterpret_cast<const KBDLLHOOKSTRUCT*>(lParam);
         if (info->vkCode == g_hotkey) {
             const bool isDown = (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN);
-            const bool isUp = (wParam == WM_KEYUP || wParam == WM_SYSKEYUP);
 
             if (isDown) {
                 // 注入的按键（远程注入器、宏）不算，避免被别的工具误触发。

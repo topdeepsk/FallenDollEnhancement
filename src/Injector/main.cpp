@@ -295,14 +295,6 @@ int main(int argc, char** argv) {
     }
     std::printf("[4/4] 注入成功\n");
 
-    std::wstring injectPath;
-    const uintptr_t base = ge::FindRemoteModule(info.pid, moduleName, injectPath);
-    std::printf("      模块基址 0x%llX\n", static_cast<unsigned long long>(base));
-    std::printf("      日志 %s\n",
-                ToUtf8(ge::GetDirectoryOf(options.dllPath) + L"GameEnhancement.log").c_str());
-    std::printf("\n现在切回游戏，按 Q 触发跳跃。\n");
-    std::printf("再次运行本程序即「先卸载、再重新注入」。\n");
-
     ::CloseHandle(process);
     return 0;
 }

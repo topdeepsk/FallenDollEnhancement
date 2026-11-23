@@ -4,6 +4,7 @@
 
 #include "Common/Win32Util.h"
 #include "Dll/Config.h"
+#include "Dll/PeerJump.h"
 #include "Dll/KeyHook.h"
 #include "Dll/Player.h"
 #include "Dll/PreviewBypass.h"
@@ -122,9 +123,8 @@ GE_API int GE_Install() {
     }
 
     // 脚本追踪同样可选，且失败时不会改变游戏里的任何东西。
-    if (!StartScriptTrace()) {
-        LogLine("安装：脚本追踪未启动");
-    }
+    // 带重试：游戏刚启动时管理器还没加载，等它出现再接管（否则放置功能永久失效）。
+    StartScriptTraceRetry();
 
     ::InterlockedExchange(&g_installed, 1);
     ::LeaveCriticalSection(&g_lock);
@@ -150,9 +150,11 @@ GE_API int GE_Uninstall() {
     ::InterlockedExchange(&g_installed, 0);
 
     StopPreviewBypass();  // 鼠标钩子只读内存，先摘它
+    StopScriptTraceRetry();  // 先停重试，避免卸载途中又装一遍
     StopScriptTrace();    // vtable 补丁必须先还原，否则卸载后就是野指针
     StopKeyHook();    // 必须是先摘钩子：钩子回调会调用 RequestJump
     StopJumpWorker();
+    PeerJumpShutdown();
 
     ::LeaveCriticalSection(&g_lock);
 

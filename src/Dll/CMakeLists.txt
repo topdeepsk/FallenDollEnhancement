@@ -1,6 +1,7 @@
 add_library(GameEnhancement SHARED
     dllmain.cpp
     Config.cpp
+    PeerJump.cpp
     Player.cpp
     KeyHook.cpp
     UeRuntime.cpp

@@ -19,6 +19,7 @@ namespace {
 using ProcessEventFn = void (*)(void* self, void* function, void* parms);
 
 ProcessEventFn g_original = nullptr;
+bool g_retryQuiet = false;   // 重试期间静音，避免每 3 秒刷一条失败日志
 void* g_originalValue = nullptr;
 void** g_patchedSlot = nullptr;
 uintptr_t g_vtable = 0;
@@ -434,7 +435,9 @@ bool StartScriptTrace() {
 
     uintptr_t managerClass = 0;
     if (!ue::FindClassByName("A_ClientHPreviewManager", managerClass)) {
-        LogLine("脚本追踪：找不到 A_ClientHPreviewManager");
+        if (!g_retryQuiet) {
+            LogLine("脚本追踪：找不到 A_ClientHPreviewManager");
+        }
         return false;
     }
     g_managerClass = managerClass;
@@ -480,7 +483,9 @@ bool StartScriptTrace() {
         ue::FindInstanceOfClass(managerClass, nullptr, instance);
     }
     if (instance == 0) {
-        LogLine("脚本追踪：没有管理器实例，无法取 vtable");
+        if (!g_retryQuiet) {
+            LogLine("脚本追踪：没有管理器实例，无法取 vtable");
+        }
         return false;
     }
 
@@ -583,6 +588,51 @@ int ScriptTraceForceCommit() {
     InterlockedExchange(&g_pendingCommit, 1);
     LogLine("强制提交：已排队，等游戏线程下一帧执行");
     return 0;
+}
+
+namespace {
+
+HANDLE g_retryThread = nullptr;
+volatile LONG g_retryStop = 0;
+
+DWORD WINAPI RetryProc(LPVOID) {
+    for (int attempt = 1; attempt <= 200; ++attempt) {
+        if (InterlockedCompareExchange(&g_retryStop, 0, 0) != 0) {
+            break;
+        }
+        if (StartScriptTrace() && IsScriptTraceInstalled()) {
+            g_retryQuiet = false;
+            LogLine("脚本追踪：第 %d 次尝试接管成功", attempt);
+            break;
+        }
+        g_retryQuiet = true;
+        ::Sleep(3000);
+    }
+    g_retryQuiet = false;
+    return 0;
+}
+
+}  // namespace
+
+void StartScriptTraceRetry() {
+    if (g_retryThread != nullptr) {
+        return;
+    }
+    InterlockedExchange(&g_retryStop, 0);
+    g_retryThread = ::CreateThread(nullptr, 0, RetryProc, nullptr, 0, nullptr);
+    if (g_retryThread == nullptr) {
+        LogLine("脚本追踪：重试线程创建失败（%lu）", ::GetLastError());
+    }
+}
+
+void StopScriptTraceRetry() {
+    if (g_retryThread == nullptr) {
+        return;
+    }
+    InterlockedExchange(&g_retryStop, 1);
+    ::WaitForSingleObject(g_retryThread, 8000);
+    ::CloseHandle(g_retryThread);
+    g_retryThread = nullptr;
 }
 
 }  // namespace ge

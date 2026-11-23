@@ -52,6 +52,13 @@ inline constexpr uint32_t kCharacterMovement         = 0x338;  // ACharacter::Ch
 inline constexpr uint32_t kCmcVelocity               = 0x0D8;  // UMovementComponent::Velocity (FVector)
 inline constexpr uint32_t kCmcVelocityZ              = kCmcVelocity + 16;
 
+// UCharacterMovementComponent::MovementMode（TEnumAsByte<EMovementMode>，1 字节）
+// 布局来自运行中进程的属性链：MovementMode +0x241、GroundMovementMode +0x55A。
+// 直接改坐标时必须把它切成 Falling，否则组件仍按 Walking 做贴地推算，会把角色拽回地面。
+inline constexpr uint32_t kCmcMovementMode             = 0x241;
+inline constexpr uint8_t  kMoveModeWalking             = 1;
+inline constexpr uint8_t  kMoveModeFalling             = 3;
+
 // TArray 布局（UE5）：Data +0x00 / Num +0x08 / Max +0x0C
 inline constexpr uint32_t kTArrayNum                 = 0x08;
 

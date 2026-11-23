@@ -5,6 +5,7 @@
 #include "Common/UeOffsets.h"
 #include "Common/Win32Util.h"
 #include "Dll/Config.h"
+#include "Dll/PeerJump.h"
 
 namespace ge {
 
@@ -77,13 +78,25 @@ bool ResolvePlayer(uintptr_t& outPawn, uintptr_t& outRoot) {
     return true;
 }
 
-void ZeroVerticalVelocity(uintptr_t pawn) {
+uintptr_t MovementOf(uintptr_t pawn) {
     uintptr_t movement = 0;
     if (!Read(pawn + ue::kCharacterMovement, movement) || !IsUserPointer(movement)) {
-        return;
+        return 0;
     }
+    return movement;
+}
+
+void ZeroVerticalVelocity(uintptr_t movement) {
     const double zero = 0.0;
     Write(movement + ue::kCmcVelocityZ, zero);
+}
+
+// 切成 Falling：这是"传送式抬升"能站住的关键。
+// 不改的话组件仍处于 Walking，每次 PerformMovement 都会按贴地逻辑把角色写回地面，
+// 表现就是"瞬间落地"。
+void ForceFalling(uintptr_t movement) {
+    const uint8_t falling = ue::kMoveModeFalling;
+    Write(movement + ue::kCmcMovementMode, falling);
 }
 
 // 一次跳跃 = 读出当前世界 Z，一次性抬到目标高度，保持 holdMs 再放手。
@@ -116,6 +129,24 @@ void DoJump() {
     Read(root + ue::kSceneAttachParent, attachParent);
     const bool attached = attachParent != 0;
 
+    // 位置由服务端权威：本地进程里 PC/Pawn 的 Role 不是 Authority 时，
+    // 写本地坐标会在下一个网络更新（~32ms）被覆盖回去，必须写到服务端进程。
+    uint8_t role = 0;
+    const bool localAuthority = Read(pawn + 0x168, role) && role == 3;
+    if (!localAuthority) {
+        double world[3] = {};
+        if (!ReadMemory(root + Cfg().worldZOffset - 16, world, sizeof(world))) {
+            LogLine("跳跃：读不到世界坐标，放弃");
+            return;
+        }
+        if (PeerJumpUp(world, Cfg().jumpHeight)) {
+            LogLine("跳跃 #%ld：已交给服务端执行（本地 Role=%u，非权威）",
+                    InterlockedIncrement(&g_jumpCount), static_cast<unsigned>(role));
+            return;
+        }
+        LogLine("跳跃：服务端不可用，退回本地写入（会被网络同步覆盖）");
+    }
+
     const double targetWorld = worldZ + Cfg().jumpHeight;
     // 根组件无父级时相对坐标等于世界坐标；被 attach 时保持原有差值。
     const double targetRel = attached ? (relZ + Cfg().jumpHeight) : targetWorld;
@@ -136,8 +167,12 @@ void DoJump() {
 
         Write(root + Cfg().worldZOffset, targetWorld);
         Write(root + ue::kFVectorZOffset, targetRel);
-        if (Cfg().zeroVelocity) {
-            ZeroVerticalVelocity(pawn);
+        const uintptr_t movement = MovementOf(pawn);
+        if (movement != 0) {
+            ForceFalling(movement);
+            if (Cfg().zeroVelocity) {
+                ZeroVerticalVelocity(movement);
+            }
         }
 
         if (elapsed >= holdMs) {

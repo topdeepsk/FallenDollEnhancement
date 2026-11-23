@@ -12,6 +12,12 @@ namespace ge {
 // 目的：对比绿色（能放）和红色（不能放）两次点击，看游戏自己到底调了哪些函数，
 // 从而确定绕过点。thunk 里只做读+写日志，任何一步失败都不影响调用本身。
 bool StartScriptTrace();
+
+// 带重试的安装：游戏刚启动时 A_ClientHPreviewManager 还不存在（先注入后加载的场景），
+// 单次安装必然失败，之后也不会再试 —— 表现为"跳跃正常但放置失效"。这里每 3 秒重试。
+void StartScriptTraceRetry();
+void StopScriptTraceRetry();
+
 void StopScriptTrace();
 bool IsScriptTraceInstalled();
 

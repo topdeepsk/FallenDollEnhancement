@@ -1,8 +1,14 @@
 # GameEnhancement
 
 一个最小可用的 UE5 外部增强工程：**一次构建产出注入器 exe 与被注入的 dll**，
-命令行把 dll 注入指定进程，dll 在游戏里监听 `Q`，按下就把玩家角色的 Z 坐标
-瞬间抬高一段距离。
+命令行把 dll 注入指定进程。注入后提供两个功能：
+
+| 功能 | 触发 | 作用 |
+|---|---|---|
+| **跳跃** | `Q` | 把玩家角色瞬间抬高 180（可配），随后自然下落。用于跳进正常走不到的区域探索未开放地图 |
+| **动作放置** | 自动（左键时） | 让动作预览的"红区"（游戏判定为不可放置）也能落位 |
+
+两个功能都不改代码段、不依赖函数地址，只做数据读写；放置功能额外借了引擎自己的提交路径。
 
 面向 `Paralogue-Win64-Shipping.exe`（Fallen Doll / Paralogue）编写，
 偏移取自本仓库 `插件项目/dump` 的同版本 dump，不是估计值。
@@ -14,7 +20,7 @@
 | 产物 | 说明 |
 |---|---|
 | `build/bin/ge_inject.exe` | 注入器（x64 控制台程序），`CreateRemoteThread` + `LoadLibraryW` |
-| `build/bin/GameEnhancement.dll` | 被注入的模块，导出 `GE_Install` / `GE_Uninstall` / `GE_QueryState` / `GE_JumpNow` / `GE_PreviewState` / `GE_ForcePlaceNow` / `GE_AbiVersion` |
+| `build/bin/GameEnhancement.dll` | 被注入的模块，导出 `GE_Install` / `GE_Uninstall` / `GE_QueryState` / `GE_AbiVersion` / `GE_JumpNow` / `GE_PreviewState` / `GE_ForcePlaceNow` / `GE_ScriptTraceState` / `GE_TraceDump` / `GE_ForceCommit` |
 | `build/bin/GameEnhancement.ini` | 首次注入时自动生成的可调参数文件 |
 | `build/bin/GameEnhancement.log` | 运行日志，与 ini 同目录 |
 
@@ -67,6 +73,15 @@ ge_inject.exe Paralogue-Win64-Shipping.exe --preview
 
 :: 按当前幽灵位置强制改写一次放置判定（不点鼠标，排错用）
 ge_inject.exe Paralogue-Win64-Shipping.exe --place
+
+:: 打印脚本钩子接管状态（vtable 槽位，只读）
+ge_inject.exe Paralogue-Win64-Shipping.exe --script
+
+:: 导出最近两次点击抓到的脚本调用序列
+ge_inject.exe Paralogue-Win64-Shipping.exe --dump
+
+:: 不点鼠标，直接调用一次提交函数
+ge_inject.exe Paralogue-Win64-Shipping.exe --commit
 ```
 
 **重复注入**：直接再跑一次同样的命令即可。注入器会先远程调用
@@ -80,11 +95,15 @@ ge_inject.exe Paralogue-Win64-Shipping.exe --place
 | `--jump` | 让已注入的实例立刻跳一次，不必按 Q（排错用） |
 | `--preview` | 打印动作放置的预览状态，只读 |
 | `--place` | 按当前幽灵位置强制改写一次放置判定 |
+| `--script` | 打印脚本钩子接管状态（只读） |
+| `--dump` | 导出最近两次点击抓到的脚本调用序列 |
+| `--commit` | 直接调用一次动作提交函数（不经过左键判定） |
 | `--no-unload` | 跳过卸载直接注入（调试用，会留下旧实例的钩子） |
 | `--skip-uninstall` | 卸载时跳过 `GE_Uninstall`，只 `FreeLibrary`（靠 DllMain 兜底） |
 | `--wait <秒>` | 等待进程出现 |
 
-成功后会打印模块基址和日志路径。切回游戏按 `Q` 即触发。
+注入成功会打印 `[4/4] 注入成功`，详细状态见 DLL 同目录的 `GameEnhancement.log`。
+切回游戏按 `Q` 即触发跳跃；进到动作放置预览后左键即触发放置改写。
 
 > 游戏若以管理员权限运行，注入器也必须以管理员运行，否则 `OpenProcess` 会失败（错误码 5）。
 
@@ -120,6 +139,10 @@ PreviewHoldMs=150          ; 点击后持续重写多久
 `HoldMs` 不是"缓慢上升"：位置在第一帧就已经到顶了，之后的重写只是为了
 **不让 CharacterMovement 把它当成悬空立刻拽回地面**。设为 0 会看到瞬移一下
 马上落回，通常不可见。
+
+> `HoldMs` / `ZeroVelocity` 只对"本机就是服务端"（`Role == Authority`）那条路径有效。
+> 客户端模式下是跨进程写服务端（见 §5.1.2），只写一次、写完立刻进入自由落体，
+> 这两个参数不参与。
 
 ---
 
@@ -160,6 +183,60 @@ PreviewHoldMs=150          ; 点击后持续重写多久
 `FTransform` 起始于 `+0x1F0`，`Translation` 三元组在 `+0x210`（X/Y/Z 依次 `+0x210/+0x218/+0x220`）。
 换构建后这个偏移要重新找，所以它放在 ini 的 `WorldZOffset` 里而不是写死。
 
+### 5.1.2 位置由服务端权威：跳跃必须写到另一个进程
+
+上面那套读写只对"自己就是服务端"的情况成立。实测这个游戏是**服务端权威**的：
+本机跑着两个同名的 `Paralogue-Win64-Shipping.exe`，一个是客户端（你操作的那个），
+另一个是服务端。
+
+判断方法：读 `AActor::Role`（`+0x168`，1 字节），
+`0=None / 1=SimulatedProxy / 2=AutonomousProxy / 3=Authority`。
+客户端里 `PlayerController` 和 `Pawn` 都是 `AutonomousProxy`，服务端里的 `AvatarPawn_C`
+才是 `Authority`。
+
+在客户端改 Z 的后果（实测数据）：
+
+- 抬高 180 后，Z 在 **16～22ms（约 1 帧）** 内被写回原值，而且是精确回到原值，
+  不是重力下落；
+- 同时在服务端进程 `NtSuspendProcess` 挂起后重测，Z **保持 59ms 不动** ——
+  证明写回来自服务端的网络位置复制（约 32ms 一次，正好是 30Hz）；
+- 顺带说明：`bServerAcceptClientAuthoritativePosition`（`CharacterMovement + 0x565`
+  的 bit 2）解决不了这件事，它管的是 `ServerMove` 的校验，管不了"服务端自己模拟出的位置
+  往客户端复制"这条链路。
+
+所以 `Q` 按下后的流程是：
+
+```
+读本地 pawn 的 Role
+├─ 3 (Authority)        → 直接写本地（就是 §5.1 那套）
+└─ 其它（客户端）        → PeerJumpUp()：跨进程写到服务端
+```
+
+`PeerJump.cpp` 做的事：
+
+1. **找对端进程**：`EnumProcesses` + `QueryFullProcessImageNameW` 按 exe 名匹配（跳过自己），
+   能用 `ReadProcessMemory` 读到 `GObjects` 的才算数；
+2. **远程反射**：远端 `GObjects`/`GNames` 的 RVA 与本地相同（同一个构建），
+   只是基址不同。按 §5.5.1 同样的布局远程遍历 `GUObjectArray`，收集所有 `AvatarPawn_C`；
+   类名按类指针缓存，避免每个对象都解一次名字；
+3. **认领角色**：用**世界坐标最近邻**匹配（客户端与服务端同一个 pawn 的位置，
+   允许几十毫秒同步误差）。要求距离平方 < 400²，并校验该 pawn 的 `Role == Authority`，
+   避免误伤 NPC；
+4. **写入**：`RootComponent + 0x210 + 16`（世界 Z）加上高度，再把
+   `CharacterMovement + 0x241`（`MovementMode`）写成 `3`（`MOVE_Falling`）。
+
+服务端自己按重力下落，客户端在 40ms 内随网络同步跟随。实测数据（服务端抬高后两侧同时采样）：
+
+```
++0   ms  服务端 Z= 72.1   客户端 Z=-107.9
++41  ms  服务端 Z= 71.9   客户端 Z=  71.0
++143 ms  服务端 Z= 61.8   客户端 Z=  61.8   ← 完全一致，自然下落
+```
+
+扫描结果缓存 5 秒（`g_scanTick`），避免每次按键都全量遍历几十万个对象。
+
+`PeerJumpShutdown()` 在卸载时关掉持有的进程句柄。
+
 ### 5.2 偏移来源
 
 | 字段 | 偏移 | 出自 dump 中的类 |
@@ -174,6 +251,9 @@ PreviewHoldMs=150          ; 点击后持续重写多久
 | `ComponentToWorld.Translation` | `0x210`（Z 在 `0x220`） | **非反射**，手工定位 |
 | `CharacterMovement` | `0x338` | `Character` |
 | `Velocity` | `0x0D8` | `AvatarMovementComponent` |
+| `Actor.Role` | `0x168` | `Actor`（`ENetRole`，1 字节） |
+| `MovementMode` | `0x241` | `CharacterMovementComponent`（1 字节，`3` = `MOVE_Falling`） |
+| `bJustTeleported` / `bServerAcceptClientAuthoritativePosition` | `0x564` bit5 / `0x565` bit2 | 同上（位域，用 `FBoolProperty` 的 `ByteMask` 判断） |
 
 `FVector` 是 **24 字节**（UE5 LWC，3 × float64），Z 在 `+16`。
 用 float 写会直接写坏数据。
@@ -182,8 +262,10 @@ PreviewHoldMs=150          ; 点击后持续重写多久
 
 - 键盘：`WH_KEYBOARD_LL` 低级钩子，装在独立线程的消息循环里
   （低级钩子的回调由安装线程的消息循环派发，不能挂在没有消息泵的线程上）。
-- 只处理 `WM_KEYDOWN`，并用"键已按下"标志把长按压成一次；
-  屏蔽 `LLKHF_INJECTED`；只在游戏窗口处于前台时触发。
+- 只处理 `WM_KEYDOWN`；屏蔽 `LLKHF_INJECTED`（远程注入器/宏不算，避免别的工具误触发）；
+  只在游戏窗口处于前台时触发。
+- **不做按键去重**：长按会随系统自动重复连续抬升，每按一次叠加一个 `JumpHeight`。
+  这是有意设计——逐段爬高比一次抬到顶更好控制。
 - 钩子永远 `CallNextHookEx` 放行，不影响游戏自己的 Q 输入。
 - 卸载顺序：先 `UnhookWindowsHookEx` 再停线程，然后才允许 `FreeLibrary`。
 
@@ -244,11 +326,14 @@ FProperty: +0x20 Name / +0x34 ElementSize / +0x48 Offset_Internal
 2. **根组件被 attach 时两个坐标不再相等。** 代码会读 `AttachParent` 判断：
    无父级时两份写同一个值；有父级时保持原来的差值。父级若带缩放（极少见），
    实际抬升量会被父级变换缩放。
-3. **只改位置，不改物理状态。** 保持结束后角色由重力自然落回；
-   如果游戏用 `MOVE_None` 或自定义移动模式接管，可能看到不下落或立刻回弹，
-   此时把 `HoldMs` 调大或改用速度驱动（写 `Velocity.Z`）更稳。
+3. **必须同时改 `MovementMode`。** 只写坐标时组件仍处于 `Walking`，下一帧按贴地逻辑
+   把角色拽回地面；跳跃会把 `MovementMode` 写成 `MOVE_Falling`，之后由重力接管。
+   若游戏换用别的移动模式（例如能飞的相机 pawn），需要相应调整这个值。
 4. **写世界变换跳过了碰撞扫描。** 抬得太高可能穿进几何体，落地位置由物理自行修正。
-5. **单机。** 任何联机/带反作弊的会话都会拦注入或导致不同步。
+   这是"跳进不可达区域"的预期副作用，不做穿透修正。
+5. **只支持"服务端在本机"的联机形态。** 客户端模式下要跨进程找同名进程写服务端，
+   连远程服务器时找不到对端，`Q` 会退回本地写入并被网络同步覆盖（日志有明确提示）。
+   带反作弊的会话会直接拦注入。
 6. **只支持 x64 目标**，32 位进程会被直接拒绝。
 7. **日志要写在 DLL 同目录**，该目录必须可写。若把 DLL 放进 `Program Files`
    这类受保护目录，日志会写不进去（此时只能靠调试器看 `OutputDebugString`）。
@@ -282,6 +367,10 @@ python tools\probe.py Paralogue-Win64-Shipping.exe --bump 20   :: 可逆写测�
 | `LoadLibraryW 返回 0` | 位数不符，或 DLL 依赖缺失（本工程应为 0 依赖） |
 | 注入成功但按 Q 无反应 | 看日志有没有 `解析玩家失败`：多半在菜单/加载界面，或偏移已过期 |
 | 日志里有 `跳跃 #N` 但画面不动 | `WorldZOffset` 过期（写到了错误地址），用 `probe.py --bump` 复测 |
+| 按 Q 后角色"瞬间落地"、走不动 | 写的是客户端副本，被服务端每 ~32ms 覆盖。看日志有没有 `退回本地写入（会被网络同步覆盖）`，正常应走 `已交给服务端执行` |
+| `跨进程跳跃：找不到同名的服务端进程` | 服务端不在本机（连的远程服务器），这条链路不可用 |
+| `跨进程跳跃：对端找到 0 个 AvatarPawn_C` | 远端名字池地址算错：`base + GNamesRVA` **就是** `FNamePool` 结构体，不能再解一次指针；或挑到了错误的同名进程 |
+| `跨进程跳跃：最近的 Authority 角色距离 … 超出容忍范围` | 坐标匹配失败（对角/切场景瞬间位置不同步），再按一次通常就好 |
 | `FreeLibrary 之后模块仍然存在` | 有别的工具/线程持有引用，重启游戏再试 |
 | 链接报 `LNK1104` | DLL 正被游戏加载，先 `--eject` |
 
@@ -305,6 +394,7 @@ GameEnhancement/
     │   ├── Api.h              # C ABI 声明
     │   ├── Config.h/.cpp      # ini 读写
     │   ├── Player.h/.cpp      # 解析玩家 + 跳跃工作线程
+    │   ├── PeerJump.h/.cpp    # 客户端模式下跨进程写服务端（远程反射 + 最近邻匹配角色）
     │   ├── UeRuntime.h/.cpp   # 运行时对象表（GObjects/GNames）按名字找类与属性
     │   ├── PreviewBypass.h/.cpp # 动作放置：鼠标钩子 + 判定状态改写
     │   ├── KeyHook.h/.cpp     # 低级键盘钩子安装/卸载
